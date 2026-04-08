@@ -6,6 +6,7 @@ import os
 import base64
 import secrets
 from datetime import datetime
+from urllib.parse import quote
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
@@ -39,7 +40,7 @@ def aes_encrypt(plaintext: str) -> str:
     return b64.replace("+", "-")
 
 def enc_token(token: str) -> str:
-    return aes_encrypt(f"access_token={token}&amp;terminal=3")
+    return quote(aes_encrypt(f"access_token={token}&amp;terminal=3"), safe='')
 
 def parse_accounts():
     val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
@@ -77,7 +78,7 @@ def login(phone, password):
 
 def get_info(token):
     try:
-        url = f"{BASE_URL}/web/user/current/details?encryptParam={requests.utils.quote(enc_token(token))}"
+        url = f"{BASE_URL}/web/user/current/details?encryptParam={enc_token(token)}"
         r = requests.get(url, headers=APP_HEADERS, timeout=30)
         d = r.json()
         if d.get("status") == 200:
@@ -90,7 +91,7 @@ def get_info(token):
 
 def do_sign(token):
     try:
-        url = f"{BASE_URL}/web/event/trigger?encryptParam={requests.utils.quote(enc_token(token))}"
+        url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
         body = aes_encrypt(json.dumps({"eventCode": "SJ10002"}, separators=(",", ":")))
         r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
         d = r.json()
@@ -102,7 +103,7 @@ def do_sign(token):
 
 def do_share(token):
     try:
-        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={requests.utils.quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'))}"
+        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
         r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
         d = r.json()
         if d.get("status") != 200:
@@ -111,7 +112,7 @@ def do_share(token):
         if not articles:
             return False, "无推荐文章"
         aid = str(articles[0]["content"]["id"])
-        share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParams={requests.utils.quote(enc_token(token))}"
+        share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParams={enc_token(token)}"
         share_body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
         sr = requests.post(share_url, headers=APP_HEADERS, data=share_body.encode("utf-8"), timeout=30)
         sd = sr.json()
