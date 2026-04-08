@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import requests
+r = requests.get("https://www.baidu.com", timeout=10)
+print(f"网络测试: {r.status_code}")
+import requests
 import json
 import os
 import base64
