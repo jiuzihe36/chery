@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import requests
-import json
-import os
-import base64
-import secrets
-from datetime import datetime
-from urllib.parse import quote
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
+import sys
+try:
+    import requests
+    import json
+    import os
+    import base64
+    import secrets
+    from datetime import datetime
+    from urllib.parse import quote
+    from Crypto.Cipher import AES
+    from Crypto.Util.Padding import pad
+    print("✅ 模块导入成功")
+except Exception as e:
+    print(f"❌ 导入失败: {e}")
+    sys.exit(1)
 
 LOGIN_URL = "https://logintools.smallfawn.top/chery/loginByPassword"
 BASE_URL = "https://mobile-consumer-sapp.chery.cn"
@@ -40,6 +46,7 @@ def enc_token(token: str) -> str:
 
 def parse_accounts():
     val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
+    print(f"环境变量长度: {len(val)}")
     if not val:
         return []
     parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
@@ -66,19 +73,23 @@ def login(phone, password):
         if d.get("status"):
             full = d.get("data", "")
             return full.split("#")[0] if "#" in full else full
+        print(f"登录失败: {d}")
     except Exception as e:
         print(f"登录异常: {e}")
     return ""
 
 def get_token():
     accs = parse_accounts()
+    print(f"解析到 {len(accs)} 个账号")
     if not accs:
-        print("❌ 未配置 CHERY_ACCOUNT 环境变量")
         return ""
     acc = accs[0]
     token = acc.get("token", "")
     if not token and acc.get("phone"):
+        print("正在登录...")
         token = login(acc["phone"], acc["password"])
+    if token:
+        print(f"token前20位: {token[:20]}...")
     return token
 
 def test_event(token, event_code):
@@ -91,10 +102,14 @@ def test_event(token, event_code):
         return {"error": str(e)}
 
 def main():
+    print("=" * 50)
+    print("🔍 eventCode 暴力测试")
+    print("=" * 50)
+
     token = get_token()
     if not token:
+        print("❌ 获取token失败")
         return
-    print(f"✅ token 获取成功\n")
 
     candidates = [
         "SJ10001", "SJ10003", "SJ10004", "SJ10005", "SJ10006",
@@ -106,16 +121,15 @@ def main():
         "SJ10002",
     ]
 
-    print("=" * 50)
-    print("🔍 eventCode 暴力测试")
-    print("=" * 50)
-
     for code in candidates:
         resp = test_event(token, code)
         status = resp.get("status", "?")
         msg = resp.get("message", resp.get("msg", str(resp)[:80]))
         marker = "✅" if status == 200 else "❌"
         print(f"{marker} {code:12s} | status={status} | {msg}")
+
+    print("=" * 50)
+    print("完成")
 
 if __name__ == "__main__":
     main()
