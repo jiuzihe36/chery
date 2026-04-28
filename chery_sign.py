@@ -161,12 +161,14 @@ def process_account(acc, idx):
     nickname, points_before = get_info(token)
     if nickname is None:
         return
+    points_before = int(points_before) if points_before else 0
     log(f"昵称: {nickname}, 积分: {points_before}")
     ok, msg = do_sign(token)
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
     sok, smsg = do_share(token)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
     _, points_after = get_info(token)
+    points_after = int(points_after) if points_after else 0
     if points_after is not None:
         increase = points_after - points_before
         log(f"📈 本次积分变化: {'+' if increase >= 0 else ''}{increase}")
