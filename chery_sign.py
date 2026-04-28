@@ -125,6 +125,33 @@ def do_share(token):
     except Exception as e:
         return False, str(e)
 
+def test_event_codes(token):
+    """暴力测试所有可能的分享事件码"""
+    candidates = [
+        "SJ10001", "SJ10003", "SJ10004", "SJ10005", "SJ10006",
+        "SJ10007", "SJ10008", "SJ10009", "SJ10010",
+        "SJ20001", "SJ20002", "SJ20003", "SJ20004", "SJ20005",
+        "SJ30001", "SJ30002", "SJ30003",
+        "FX10001", "FX10002",
+        "SHARE001", "SHARE002",
+        "SJ10002",
+    ]
+    log("=" * 50)
+    log("🔍 eventCode 暴力测试")
+    log("=" * 50)
+    for code in candidates:
+        try:
+            url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
+            body = aes_encrypt(json.dumps({"eventCode": code}, separators=(",", ":")))
+            r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=15)
+            resp = r.json()
+            status = resp.get("status", "?")
+            msg = resp.get("message", resp.get("msg", str(resp)[:60]))
+            marker = "✅" if status == 200 else "❌"
+            log(f"{marker} {code:12s} | status={status} | {msg}")
+        except Exception as e:
+            log(f"❌ {code:12s} | 异常: {e}")
+
 def process_account(acc, idx):
     name = acc.get("remark") or acc.get("phone") or "账号"
     log(f"--- 账号{idx}: {name} ---")
@@ -139,10 +166,17 @@ def process_account(acc, idx):
     if nickname is None:
         return
     log(f"昵称: {nickname}, 积分: {points}")
+
+    # 签到
     ok, msg = do_sign(token)
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
+
+    # 分享
     sok, smsg = do_share(token)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
+
+    # 暴力测试事件码
+    test_event_codes(token)
 
 def main():
     log("=" * 45)
