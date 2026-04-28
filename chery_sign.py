@@ -8,7 +8,6 @@ import json
 import os
 import base64
 import secrets
-import time
 from datetime import datetime
 from urllib.parse import quote
 from Crypto.Cipher import AES
@@ -44,13 +43,13 @@ def aes_encrypt(plaintext: str) -> str:
     return b64.replace("+", "-")
 
 def enc_token(token: str) -> str:
-    return quote(aes_encrypt(f"access_token={token}&terminal=3"), safe='')
+    return quote(aes_encrypt(f"access_token={token}&amp;terminal=3"), safe='')
 
 def parse_accounts():
     val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
     if not val:
         return []
-    parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
+    parts = [p.strip() for p in val.replace("\n", "&amp;").split("&amp;") if p.strip()]
     accounts = []
     i = 0
     while i < len(parts):
@@ -87,22 +86,11 @@ def get_info(token):
         d = r.json()
         if d.get("status") == 200:
             data = d["data"]
-            return data.get("displayName", "?"), int(data.get("pointAccount", {}).get("payableBalance", 0))
+            return data.get("displayName", "?"), data.get("pointAccount", {}).get("payableBalance", 0)
         log(f"获取信息失败: {d.get('message')}", "ERROR")
     except Exception as e:
         log(f"信息异常: {e}", "ERROR")
     return None, None
-
-def get_points(token):
-    try:
-        url = f"{BASE_URL}/web/point/consumer/info?encryptParam={enc_token(token)}"
-        r = requests.get(url, headers=APP_HEADERS, timeout=15)
-        d = r.json()
-        if d.get("status") == 200:
-            return int(d["data"]["payableBalance"])
-    except:
-        pass
-    return None
 
 def do_sign(token):
     try:
@@ -116,28 +104,24 @@ def do_sign(token):
     except Exception as e:
         return False, str(e)
 
-def get_articles(token):
+def do_share(token):
     try:
-        url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&pageSize=10&access_token={token}&terminal=3'), safe='')}"
-        r = requests.get(url, headers=APP_HEADERS, timeout=30)
+        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
+        r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
         d = r.json()
-        if d.get("status") == 200:
-            articles = d.get("data", {}).get("data", [])
-            if articles:
-                return str(articles[0]["content"]["id"])
-    except Exception as e:
-        log(f"获取文章异常: {e}", "ERROR")
-    return None
-
-def do_share(token, aid):
-    try:
-        url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParam={enc_token(token)}"
-        body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
-        r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
-        d = r.json()
-        if d.get("status") == 200:
-            return True, d.get("message", "成功")
-        return False, d.get("message", "失败")
+        if d.get("status") != 200:
+            return False, d.get("message", "获取文章失败")
+        articles = d.get("data", {}).get("data", [])
+        if not articles:
+            return False, "无推荐文章"
+        aid = str(articles[0]["content"]["id"])
+        share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParams={enc_token(token)}"
+        share_body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
+        sr = requests.post(share_url, headers=APP_HEADERS, data=share_body.encode("utf-8"), timeout=30)
+        sd = sr.json()
+        if sd.get("status") == 200:
+            return True, sd.get("message", "分享成功")
+        return False, sd.get("message", "分享失败")
     except Exception as e:
         return False, str(e)
 
@@ -151,43 +135,18 @@ def process_account(acc, idx):
     if not token:
         log("无有效token,跳过", "ERROR")
         return
-
     nickname, points = get_info(token)
     if nickname is None:
         return
     log(f"昵称: {nickname}, 积分: {points}")
-
-    # 签到
     ok, msg = do_sign(token)
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
-
-    # 获取文章
-    aid = get_articles(token)
-    if not aid:
-        log("无法获取文章ID", "ERROR")
-        return
-
-    # 分享 (每天最多2积分)
-    for i in range(2):
-        ok, msg = do_share(token, aid)
-        log(f"{'✅' if ok else '❌'} 分享{i+1}: {msg}")
-        time.sleep(1)
-
-    # 等待积分到账
-    log("等待积分到账...")
-    time.sleep(25)
-
-    # 检查积分变化
-    new_points = get_points(token)
-    if new_points is not None:
-        gained = new_points - points
-        log(f"📊 积分变化: {points} → {new_points} (+{gained})")
-    else:
-        log("无法获取积分", "ERROR")
+    sok, smsg = do_share(token)
+    log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
 
 def main():
     log("=" * 45)
-    log("🚗 奇瑞汽车签到脚本 v3")
+    log("🚗 奇瑞汽车签到脚本启动")
     log("=" * 45)
     accounts = parse_accounts()
     if not accounts:
