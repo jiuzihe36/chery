@@ -96,33 +96,48 @@ def do_sign(token):
     try:
         url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
         body = aes_encrypt(json.dumps({"eventCode": "SJ10002"}, separators=(",", ":")))
+        log(f"签到请求URL: {url[:100]}...")
+        log(f"签到请求体长度: {len(body)}")
         r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
+        log(f"签到响应状态码: {r.status_code}")
         d = r.json()
+        log(f"签到响应数据: {json.dumps(d, ensure_ascii=False)}")
         if d.get("status") == 200:
             return True, d.get("message", "成功")
         return False, d.get("message", "失败")
     except Exception as e:
+        log(f"签到异常: {e}", "ERROR")
         return False, str(e)
 
 def do_share(token):
     try:
         list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
+        log(f"获取文章列表URL: {list_url[:100]}...")
         r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
+        log(f"文章列表响应状态码: {r.status_code}")
         d = r.json()
+        log(f"文章列表响应数据: {json.dumps(d, ensure_ascii=False)[:500]}...")
         if d.get("status") != 200:
             return False, d.get("message", "获取文章失败")
         articles = d.get("data", {}).get("data", [])
         if not articles:
             return False, "无推荐文章"
         aid = str(articles[0]["content"]["id"])
-        share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParams={enc_token(token)}"
+        log(f"选中文章ID: {aid}")
+        share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParam={enc_token(token)}"
         share_body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
+        log(f"分享请求URL: {share_url}")
+        log(f"分享请求体长度: {len(share_body)}")
+        log(f"分享请求体: {share_body[:100]}...")
         sr = requests.post(share_url, headers=APP_HEADERS, data=share_body.encode("utf-8"), timeout=30)
+        log(f"分享响应状态码: {sr.status_code}")
         sd = sr.json()
+        log(f"分享响应数据: {json.dumps(sd, ensure_ascii=False)}")
         if sd.get("status") == 200:
             return True, sd.get("message", "分享成功")
         return False, sd.get("message", "分享失败")
     except Exception as e:
+        log(f"分享异常: {e}", "ERROR")
         return False, str(e)
 
 def process_account(acc, idx):
