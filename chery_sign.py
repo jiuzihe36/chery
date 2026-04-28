@@ -134,7 +134,15 @@ def do_share(token):
         sd = sr.json()
         log(f"分享响应数据: {json.dumps(sd, ensure_ascii=False)}")
         if sd.get("status") == 200:
-            return True, sd.get("message", "分享成功")
+            log("分享成功, 尝试领取分享积分...")
+            reward_url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
+            reward_body = aes_encrypt(json.dumps({"eventCode": "SJ10003"}, separators=(",", ":")))
+            rr = requests.post(reward_url, headers=APP_HEADERS, data=reward_body.encode("utf-8"), timeout=30)
+            rd = rr.json()
+            log(f"分享积分领取响应: {json.dumps(rd, ensure_ascii=False)}")
+            if rd.get("status") == 200:
+                return True, "分享成功并领取积分"
+            return True, f"分享成功, 领取积分: {rd.get('message', '未知')}"
         return False, sd.get("message", "分享失败")
     except Exception as e:
         log(f"分享异常: {e}", "ERROR")
@@ -150,14 +158,19 @@ def process_account(acc, idx):
     if not token:
         log("无有效token,跳过", "ERROR")
         return
-    nickname, points = get_info(token)
+    nickname, points_before = get_info(token)
     if nickname is None:
         return
-    log(f"昵称: {nickname}, 积分: {points}")
+    log(f"昵称: {nickname}, 积分: {points_before}")
     ok, msg = do_sign(token)
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
     sok, smsg = do_share(token)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
+    _, points_after = get_info(token)
+    if points_after is not None:
+        increase = points_after - points_before
+        log(f"📈 本次积分变化: {'+' if increase >= 0 else ''}{increase}")
+        log(f"💰 当前积分: {points_after}")
 
 def main():
     log("=" * 45)
