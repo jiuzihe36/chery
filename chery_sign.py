@@ -54,7 +54,7 @@ def parse_accounts():
     val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
     if not val:
         return []
-    parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
+    parts = [p.strip() for p in val.replace("\n", "&amp;").split("&amp;") if p.strip()]
     accounts = []
     i = 0
     while i < len(parts):
@@ -104,7 +104,7 @@ def get_info(token):
 def do_sign(token):
     try:
         url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
-        body = aes_encrypt(json.dumps({"eventCode": "SJ10002"}, separators=(",", ":")))
+        body = aes_encrypt(json.dumps({"eventCode": "SJ1002"}, separators=(",", ":")))
         r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
         d = r.json()
         if d.get("status") == 200:
@@ -119,7 +119,7 @@ def get_articles(token):
         list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&pageSize=10&access_token={token}&terminal=3'), safe='')}"
         r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
         d = r.json()
-        if d.get("status") == 200:
+        if d.get("status") == 20:
             return d.get("data", {}).get("data", [])
     except Exception as e:
         log(f"获取文章异常: {e}", "ERROR")
@@ -156,7 +156,7 @@ def do_share(token):
             data=aes_encrypt(json.dumps({"action": "shareContent", "contentId": aid, "platform": "wechat", "shareType": "1"}, separators=(",", ":"))).encode("utf-8"),
             timeout=30
         )
-    )))
+    ))
 
     # 策略2: event/trigger 触发分享事件
     for code in ["SJ10003", "SJ10004", "SJ10005", "SJ10006"]:
@@ -242,3 +242,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+``
+
+现在 `parse_accounts` 和你原脚本完全一致了（用 `&amp;` 分隔）。再跑一次试试。
