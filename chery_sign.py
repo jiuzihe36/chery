@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import requests
+r = requests.get("https://www.baidu.com", timeout=10)
+print(f"网络测试: {r.status_code}")
+import requests
 import json
 import os
 import base64
@@ -8,8 +11,8 @@ import secrets
 import time
 from datetime import datetime
 from urllib.parse import quote
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding as crypto_padding
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
 
 LOGIN_URL = "https://logintools.smallfawn.top/chery/loginByPassword"
 BASE_URL = "https://mobile-consumer-sapp.chery.cn"
@@ -35,11 +38,8 @@ def log(msg, level="INFO"):
 
 def aes_encrypt(plaintext: str) -> str:
     iv = secrets.token_bytes(16)
-    cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv))
-    encryptor = cipher.encryptor()
-    padder = crypto_padding.PKCS7(128).padder()
-    padded = padder.update(plaintext.encode("utf-8")) + padder.finalize()
-    encrypted = encryptor.update(padded) + encryptor.finalize()
+    cipher = AES.new(AES_KEY, AES.MODE_CBC, iv)
+    encrypted = cipher.encrypt(pad(plaintext.encode("utf-8"), AES.block_size, style="pkcs7"))
     b64 = base64.b64encode(iv + encrypted).decode("utf-8")
     return b64.replace("+", "-")
 
@@ -168,12 +168,9 @@ def process_account(acc, idx):
         return
 
     # 分享 (每天最多2积分)
-    share_count = 0
     for i in range(2):
         ok, msg = do_share(token, aid)
         log(f"{'✅' if ok else '❌'} 分享{i+1}: {msg}")
-        if ok:
-            share_count += 1
         time.sleep(1)
 
     # 等待积分到账
