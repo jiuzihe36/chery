@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import sys
+import sys, os
 try:
-    import requests
-    import json
-    import os
-    import base64
-    import secrets
+    import requests, json, base64, secrets
     from datetime import datetime
     from urllib.parse import quote
     from Crypto.Cipher import AES
@@ -44,92 +40,71 @@ def aes_encrypt(plaintext: str) -> str:
 def enc_token(token: str) -> str:
     return quote(aes_encrypt(f"access_token={token}&terminal=3"), safe='')
 
-def parse_accounts():
-    val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
-    print(f"环境变量长度: {len(val)}")
-    if not val:
-        return []
-    parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
-    accounts = []
-    i = 0
-    while i < len(parts):
-        p = parts[i]
-        if "#" in p:
-            segs = p.split("#", 1)
-            accounts.append({"token": segs[0], "remark": segs[1]})
-            i += 1
-        elif len(p) == 11 and p.isdigit() and i + 1 < len(parts):
-            accounts.append({"phone": p, "password": parts[i + 1]})
-            i += 2
-        else:
-            accounts.append({"token": p})
-            i += 1
-    return accounts
-
-def login(phone, password):
-    try:
-        r = requests.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
-        d = r.json()
-        if d.get("status"):
-            full = d.get("data", "")
-            return full.split("#")[0] if "#" in full else full
-        print(f"登录失败: {d}")
-    except Exception as e:
-        print(f"登录异常: {e}")
-    return ""
-
-def get_token():
-    accs = parse_accounts()
-    print(f"解析到 {len(accs)} 个账号")
-    if not accs:
-        return ""
-    acc = accs[0]
-    token = acc.get("token", "")
-    if not token and acc.get("phone"):
-        print("正在登录...")
-        token = login(acc["phone"], acc["password"])
-    if token:
-        print(f"token前20位: {token[:20]}...")
-    return token
-
-def test_event(token, event_code):
-    url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
-    body = aes_encrypt(json.dumps({"eventCode": event_code}, separators=(",", ":")))
-    try:
-        r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=15)
-        return r.json()
-    except Exception as e:
-        return {"error": str(e)}
-
 def main():
     print("=" * 50)
-    print("🔍 eventCode 暴力测试")
+    print("🔍 调试模式")
     print("=" * 50)
 
-    token = get_token()
-    if not token:
-        print("❌ 获取token失败")
-        return
+    # 解析环境变量
+    val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
+    print(f"环境变量原始长度: {len(val)}")
+    print(f"包含&符号: {'&' in val}")
+    print(f"包含#符号: {'#' in val}")
 
-    candidates = [
-        "SJ10001", "SJ10003", "SJ10004", "SJ10005", "SJ10006",
-        "SJ10007", "SJ10008", "SJ10009", "SJ10010",
-        "SJ20001", "SJ20002", "SJ20003", "SJ20004", "SJ20005",
-        "SJ30001", "SJ30002", "SJ30003",
-        "FX10001", "FX10002",
-        "SHARE001", "SHARE002",
-        "SJ10002",
-    ]
+    parts = val.split("&")
+    print(f"按&拆分后段数: {len(parts)}")
+    for idx, p in enumerate(parts):
+        print(f"  段{idx}: 长度={len(p)}, 全数字={p.isdigit()}")
 
-    for code in candidates:
-        resp = test_event(token, code)
-        status = resp.get("status", "?")
-        msg = resp.get("message", resp.get("msg", str(resp)[:80]))
-        marker = "✅" if status == 200 else "❌"
-        print(f"{marker} {code:12s} | status={status} | {msg}")
+    if len(parts) >= 2:
+        phone = parts[0].strip()
+        password = parts[1].strip()
+        print(f"\n手机号: {phone} (长度={len(phone)})")
+        print(f"密码长度: {len(password)}")
 
-    print("=" * 50)
-    print("完成")
+        # 尝试登录
+        print(f"\n正在调用登录接口...")
+        try:
+            r = requests.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
+            print(f"HTTP状态码: {r.status_code}")
+            d = r.json()
+            print(f"返回: {json.dumps(d, ensure_ascii=False)}")
+
+            if d.get("status"):
+                full = d.get("data", "")
+                token = full.split("#")[0] if "#" in full else full
+                print(f"\n✅ 登录成功, token前20位: {token[:20]}...")
+
+                # 测试eventCode
+                candidates = [
+                    "SJ10001", "SJ10003", "SJ10004", "SJ10005", "SJ10006",
+                    "SJ10007", "SJ10008", "SJ10009", "SJ10010",
+                    "SJ20001", "SJ20002", "SJ20003", "SJ20004", "SJ20005",
+                    "SJ30001", "SJ30002", "SJ30003",
+                    "FX10001", "FX10002",
+                    "SJ10002",
+                ]
+                print(f"\n{'='*50}")
+                print("🔍 eventCode 测试")
+                print(f"{'='*50}")
+                for code in candidates:
+                    url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
+                    body = aes_encrypt(json.dumps({"eventCode": code}, separators=(",", ":")))
+                    try:
+                        r2 = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=15)
+                        resp = r2.json()
+                        status = resp.get("status", "?")
+                        msg = resp.get("message", resp.get("msg", str(resp)[:60]))
+                        marker = "✅" if status == 200 else "❌"
+                        print(f"{marker} {code:12s} | {status} | {msg}")
+                    except Exception as e:
+                        print(f"❌ {code:12s} | 异常: {e}")
+            else:
+                print(f"\n❌ 登录失败")
+        except Exception as e:
+            print(f"❌ 请求异常: {e}")
+    else:
+        print("❌ 环境变量格式错误，需要手机号&密码")
 
 if __name__ == "__main__":
     main()
