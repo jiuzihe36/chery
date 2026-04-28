@@ -8,7 +8,6 @@ import json
 import os
 import base64
 import secrets
-import random
 from datetime import datetime
 from urllib.parse import quote
 from Crypto.Cipher import AES
@@ -44,13 +43,13 @@ def aes_encrypt(plaintext: str) -> str:
     return b64.replace("+", "-")
 
 def enc_token(token: str) -> str:
-    return quote(aes_encrypt(f"access_token={token}&terminal=3"), safe='')
+    return quote(aes_encrypt(f"access_token={token}&amp;terminal=3"), safe='')
 
 def parse_accounts():
     val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
     if not val:
         return []
-    parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
+    parts = [p.strip() for p in val.replace("\n", "&amp;").split("&amp;") if p.strip()]
     accounts = []
     i = 0
     while i < len(parts):
@@ -107,7 +106,7 @@ def do_sign(token):
 
 def do_share(token):
     try:
-        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&pageSize=10&access_token={token}&terminal=3'), safe='')}"
+        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
         r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
         d = r.json()
         if d.get("status") != 200:
@@ -115,56 +114,14 @@ def do_share(token):
         articles = d.get("data", {}).get("data", [])
         if not articles:
             return False, "无推荐文章"
-
-        article = random.choice(articles)
-        aid = str(article["content"]["id"])
-        log(f"文章: [{aid}] {article['content'].get('title', '?')[:30]}")
-
-        strategies = []
-
-        strategies.append(("user-action(share)", lambda: requests.post(
-            f"{BASE_URL}/web/op/user-action?encryptParam={enc_token(token)}",
-            headers=APP_HEADERS,
-            data=aes_encrypt(json.dumps({"action": "share", "bizId": aid, "bizType": "content", "channel": "wechat"}, separators=(",", ":"))).encode("utf-8"),
-            timeout=30
-        )))
-
-        strategies.append(("user-action(shareContent)", lambda: requests.post(
-            f"{BASE_URL}/web/op/user-action?encryptParam={enc_token(token)}",
-            headers=APP_HEADERS,
-            data=aes_encrypt(json.dumps({"action": "shareContent", "contentId": aid, "platform": "wechat", "shareType": "1"}, separators=(",", ":"))).encode("utf-8"),
-            timeout=30
-        )))
-
-        for code in ["SJ10003", "SJ10004", "SJ10005", "SJ10006"]:
-            strategies.append((f"event({code})", lambda c=code: requests.post(
-                f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}",
-                headers=APP_HEADERS,
-                data=aes_encrypt(json.dumps({"eventCode": c, "bizId": aid, "bizType": "content"}, separators=(",", ":"))).encode("utf-8"),
-                timeout=30
-            )))
-
-        strategies.append(("original", lambda: requests.post(
-            f"{BASE_URL}/web/community/contents/{aid}/share?encryptParams={enc_token(token)}",
-            headers=APP_HEADERS,
-            data=aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":"))).encode("utf-8"),
-            timeout=30
-        )))
-
-        for name, req_fn in strategies:
-            try:
-                sr = req_fn()
-                sd = sr.json()
-                status = sd.get("status")
-                msg = sd.get("message", "")
-                log(f"  [{name}] status={status}, msg={msg}")
-                if status == 200:
-                    return True, msg
-            except Exception as e:
-                log(f"  [{name}] error: {e}")
-
-        return False, "all failed"
-
+        aid = str(articles[0]["content"]["id"])
+        share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParams={enc_token(token)}"
+        share_body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
+        sr = requests.post(share_url, headers=APP_HEADERS, data=share_body.encode("utf-8"), timeout=30)
+        sd = sr.json()
+        if sd.get("status") == 200:
+            return True, sd.get("message", "分享成功")
+        return False, sd.get("message", "分享失败")
     except Exception as e:
         return False, str(e)
 
@@ -175,9 +132,9 @@ def process_account(acc, idx):
     if not token and acc.get("phone"):
         log("正在登录...")
         token = login(acc["phone"], acc["password"])
-        if not token:
-            log("无有效token,跳过", "ERROR")
-            return
+    if not token:
+        log("无有效token,跳过", "ERROR")
+        return
     nickname, points = get_info(token)
     if nickname is None:
         return
@@ -186,26 +143,20 @@ def process_account(acc, idx):
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
     sok, smsg = do_share(token)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
-    if sok:
-        _, points2 = get_info(token)
-        if points2 and points2 > points:
-            log(f"积分变化: {points} -> {points2} (+{points2 - points})")
-        elif points2 is not None:
-            log(f"积分未变化: {points2}")
 
 def main():
     log("=" * 45)
-    log("奇瑞汽车签到脚本启动")
+    log("🚗 奇瑞汽车签到脚本启动")
     log("=" * 45)
     accounts = parse_accounts()
     if not accounts:
-        log("未配置环境变量 CHERY_ACCOUNT", "ERROR")
+        log("❌ 未配置环境变量 CHERY_ACCOUNT", "ERROR")
         return
     log(f"共 {len(accounts)} 个账号")
     for i, acc in enumerate(accounts, 1):
         process_account(acc, i)
     log("=" * 45)
-    log("全部完成")
+    log("✅ 全部完成")
     log("=" * 45)
 
 if __name__ == "__main__":
