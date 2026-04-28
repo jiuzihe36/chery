@@ -242,6 +242,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-``
-
-现在 `parse_accounts` 和你原脚本完全一致了（用 `&amp;` 分隔）。再跑一次试试。
+    
