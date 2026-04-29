@@ -1,19 +1,9 @@
-name: 奇瑞汽车签到
-
-on:
-  schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+env:
+  CHERY_ACCOUNT: ${{ secrets.CHERY_ACCOUNT }}
 
 jobs:
-  sign:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: pip install -r requirements.txt
-      - env:
-          CHERY_ACCOUNT: ${{ secrets.CHERY_ACCOUNT }}
+      - name: Run script
         run: python chery_sign.py
