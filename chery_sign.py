@@ -181,68 +181,7 @@ def do_share(token, share_count=2):
     else:
         return False, "全部分享失败"
 
-def do_lottery(token, max_tries=3):
-    try:
-        _, initial_points = get_info(token)
-        initial_points = int(initial_points) if initial_points else 0
-        log(f"抽奖前积分: {initial_points}")
-        
-        lottery_codes = [
-            "SJ10004", "SJ10005", "SJ10006", "SJ10007", "SJ10008",
-            "SJ20001", "SJ20002", "SJ20003", "SJ20004", "SJ20005",
-            "SJ30001", "SJ30002", "SJ30003", "SJ30004", "SJ30005",
-            "SJ40001", "SJ40002", "SJ40003",
-            "SJ50001", "SJ50002",
-            "SJ60001", "SJ60002",
-            "SJ70001", "SJ80001",
-            "LUCKYDRAW", "LOTTERY", "DRAW", "DRAWCARD",
-            "WELFARE01", "WELFARE02", "WELFARE03",
-            "POINTS01", "POINTS02", "POINTS03",
-            "JFDRAW", "JFLOTTERY", "JF01", "JF02",
-        ]
-        
-        for code in lottery_codes:
-            log(f"尝试抽奖事件码: {code}")
-            
-            for try_num in range(1, max_tries + 1):
-                log(f"🎲 第{try_num}次抽奖 (事件码: {code})...")
-                url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
-                body = aes_encrypt(json.dumps({"eventCode": code}, separators=(",", ":")))
-                log(f"抽奖请求URL: {url[:100]}...")
-                log(f"抽奖请求体长度: {len(body)}")
-                r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
-                log(f"抽奖响应状态码: {r.status_code}")
-                d = r.json()
-                log(f"抽奖响应数据: {json.dumps(d, ensure_ascii=False)}")
-                
-                if d.get("status") != 200:
-                    msg = d.get("message", "抽奖失败")
-                    log(f"事件码 {code} 第{try_num}次抽奖失败: {msg}")
-                    break
-                
-                _, current_points = get_info(token)
-                current_points = int(current_points) if current_points else 0
-                log(f"第{try_num}次抽奖后积分: {current_points}")
-                
-                if current_points > initial_points:
-                    gain = current_points - initial_points
-                    log(f"🎉 事件码 {code} 第{try_num}次抽奖抽中! 获得 {gain} 积分")
-                    return True, f"事件码 {code} 第{try_num}次抽奖抽中! 获得 {gain} 积分"
-                elif current_points < initial_points:
-                    cost = initial_points - current_points
-                    log(f"事件码 {code} 第{try_num}次抽奖未中, 消耗 {cost} 积分")
-                    initial_points = current_points
-                    if try_num < max_tries:
-                        log(f"继续第{try_num + 1}次抽奖...")
-                else:
-                    log(f"事件码 {code} 第{try_num}次抽奖无变化")
-                    if try_num < max_tries:
-                        log(f"继续第{try_num + 1}次抽奖...")
-        
-        return True, f"已尝试所有事件码, 完成{max_tries}次抽奖"
-    except Exception as e:
-        log(f"抽奖异常: {e}", "ERROR")
-        return False, str(e)
+
 
 def process_account(acc, idx):
     name = acc.get("remark") or acc.get("phone") or "账号"
@@ -263,11 +202,6 @@ def process_account(acc, idx):
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
     sok, smsg = do_share(token)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
-    today = datetime.now()
-    if today.weekday() == 2:
-        log(f"🎲 今天是周三({today.strftime('%Y-%m-%d')}), 执行抽奖...")
-        lok, lmsg = do_lottery(token)
-        log(f"{'✅' if lok else '❌'} 抽奖: {lmsg}")
     _, points_after = get_info(token)
     points_after = int(points_after) if points_after else 0
     if points_after is not None:
