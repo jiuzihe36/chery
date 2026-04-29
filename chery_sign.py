@@ -109,7 +109,7 @@ def do_sign(token):
         log(f"签到异常: {e}", "ERROR")
         return False, str(e)
 
-def do_share(token):
+def get_articles(token):
     try:
         list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
         log(f"获取文章列表URL: {list_url[:100]}...")
@@ -118,17 +118,20 @@ def do_share(token):
         d = r.json()
         log(f"文章列表响应数据: {json.dumps(d, ensure_ascii=False)[:500]}...")
         if d.get("status") != 200:
-            return False, d.get("message", "获取文章失败")
+            return []
         articles = d.get("data", {}).get("data", [])
-        if not articles:
-            return False, "无推荐文章"
-        aid = str(articles[0]["content"]["id"])
-        log(f"选中文章ID: {aid}")
-        share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParam={enc_token(token)}"
-        share_body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
+        return [str(article["content"]["id"]) for article in articles]
+    except Exception as e:
+        log(f"获取文章列表异常: {e}", "ERROR")
+        return []
+
+def do_single_share(token, article_id, share_index=1):
+    try:
+        share_url = f"{BASE_URL}/web/community/contents/{article_id}/share?encryptParam={enc_token(token)}"
+        share_body = aes_encrypt(json.dumps({"contentId": article_id}, separators=(",", ":")))
+        log(f"第{share_index}次分享 - 文章ID: {article_id}")
         log(f"分享请求URL: {share_url}")
         log(f"分享请求体长度: {len(share_body)}")
-        log(f"分享请求体: {share_body[:100]}...")
         sr = requests.post(share_url, headers=APP_HEADERS, data=share_body.encode("utf-8"), timeout=30)
         log(f"分享响应状态码: {sr.status_code}")
         sd = sr.json()
@@ -141,11 +144,49 @@ def do_share(token):
             rd = rr.json()
             log(f"分享积分领取响应: {json.dumps(rd, ensure_ascii=False)}")
             if rd.get("status") == 200:
-                return True, "分享成功并领取积分"
-            return True, f"分享成功, 领取积分: {rd.get('message', '未知')}"
-        return False, sd.get("message", "分享失败")
+                return True, f"第{share_index}次分享成功并领取积分"
+            return True, f"第{share_index}次分享成功, 领取积分: {rd.get('message', '未知')}"
+        return False, f"第{share_index}次分享失败: {sd.get('message', '未知')}"
     except Exception as e:
-        log(f"分享异常: {e}", "ERROR")
+        log(f"第{share_index}次分享异常: {e}", "ERROR")
+        return False, f"第{share_index}次分享异常: {str(e)}"
+
+def do_share(token, share_count=2):
+    articles = get_articles(token)
+    if not articles:
+        return False, "获取文章列表失败"
+    
+    results = []
+    success_count = 0
+    for i in range(min(share_count, len(articles))):
+        article_id = articles[i]
+        ok, msg = do_single_share(token, article_id, i + 1)
+        results.append((ok, msg))
+        if ok:
+            success_count += 1
+    
+    if success_count == share_count:
+        return True, f"全部{share_count}次分享完成"
+    elif success_count > 0:
+        return True, f"部分分享完成 ({success_count}/{share_count})"
+    else:
+        return False, "全部分享失败"
+
+def do_lottery(token):
+    try:
+        url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
+        body = aes_encrypt(json.dumps({"eventCode": "SJ10004"}, separators=(",", ":")))
+        log(f"抽奖请求URL: {url[:100]}...")
+        log(f"抽奖请求体长度: {len(body)}")
+        r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
+        log(f"抽奖响应状态码: {r.status_code}")
+        d = r.json()
+        log(f"抽奖响应数据: {json.dumps(d, ensure_ascii=False)}")
+        if d.get("status") == 200:
+            return True, d.get("message", "抽奖成功")
+        return False, d.get("message", "抽奖失败")
+    except Exception as e:
+        log(f"抽奖异常: {e}", "ERROR")
         return False, str(e)
 
 def process_account(acc, idx):
@@ -167,6 +208,11 @@ def process_account(acc, idx):
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
     sok, smsg = do_share(token)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
+    today = datetime.now()
+    if today.weekday() == 2:
+        log(f"🎲 今天是周三({today.strftime('%Y-%m-%d')}), 执行抽奖...")
+        lok, lmsg = do_lottery(token)
+        log(f"{'✅' if lok else '❌'} 抽奖: {lmsg}")
     _, points_after = get_info(token)
     points_after = int(points_after) if points_after else 0
     if points_after is not None:
