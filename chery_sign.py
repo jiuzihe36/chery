@@ -74,13 +74,13 @@ def aes_encrypt(plaintext: str) -> str:
 
 
 def enc_token(token: str) -> str:
-    return quote(aes_encrypt(f"access_token={token}&terminal=3"), safe='')
+    return quote(aes_encrypt(f"access_token={token}&amp;terminal=3"), safe='')
 
 
 def enc_params(token, **kwargs):
-    params = f"access_token={token}&terminal=3"
+    params = f"access_token={token}&amp;terminal=3"
     for k, v in kwargs.items():
-        params += f"&{k}={v}"
+        params += f"&amp;{k}={v}"
     return quote(aes_encrypt(params), safe='')
 
 
@@ -136,21 +136,20 @@ def parse_accounts():
 
 # ==================== 登录 & 信息 ====================
 def login(phone, password):
-    for attempt in range(RETRY_TIMES):
-        try:
-            log(f"🔐 登录尝试 {attempt + 1}/{RETRY_TIMES}")
-            r = requests.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
-            d = r.json()
-            if d.get("status"):
-                full = d.get("data", "")
-                token = full.split("#")[0] if "#" in full else full
-                log("✅ 登录成功", "SUCCESS")
-                return token
-            log(f"登录失败: {d.get('message')}", "ERROR")
-        except Exception as e:
-            log(f"登录异常: {e}", "ERROR")
-        if attempt < RETRY_TIMES - 1:
-            time.sleep(2)
+    try:
+        log(f"🔐 正在登录...")
+        r = requests.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
+        d = r.json()
+        if d.get("status"):
+            full = d.get("data", "")
+            token = full.split("#")[0] if "#" in full else full
+            log("✅ 登录成功", "SUCCESS")
+            return token
+        log(f"登录失败: {d.get('message', '未知错误')}", "ERROR")
+    except Exception as e:
+        log(f"登录异常: {e}", "ERROR")
+    log("⚠️ 登录失败，请尝试使用token方式登录", "WARNING")
+    log("⚠️ 获取token方法：登录APP后抓包获取access_token", "WARNING")
     return ""
 
 
@@ -200,7 +199,7 @@ def do_sign(token):
 def get_articles(token):
     for attempt in range(RETRY_TIMES):
         try:
-            list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&pageSize=10&access_token={token}&terminal=3'), safe='')}"
+            list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
             r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
             d = safe_json(r)
             if d.get("status") != 200:
