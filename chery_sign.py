@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import requests
+r = requests.get("https://www.baidu.com", timeout=10)
+print(f"网络测试: {r.status_code}")
+import requests
 import json
 import os
 import base64
 import secrets
-import time
 from datetime import datetime
 from urllib.parse import quote
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
-# 配置
 LOGIN_URL = "https://logintools.smallfawn.top/chery/loginByPassword"
 BASE_URL = "https://mobile-consumer-sapp.chery.cn"
 AES_KEY = base64.b64decode("vVfnp9ozfDQyonMKuqgZUWjtdV+7PtBqtMCwJqz2HKQ=")
@@ -42,14 +43,13 @@ def aes_encrypt(plaintext: str) -> str:
     return b64.replace("+", "-")
 
 def enc_token(token: str) -> str:
-    return quote(aes_encrypt(f"access_token={token}&terminal=3"), safe='')
+    return quote(aes_encrypt(f"access_token={token}&amp;terminal=3"), safe='')
 
 def parse_accounts():
-    val = os.getenv("CHERY_ACCOUNT") or ""
+    val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
     if not val:
         return []
-    val = val.replace("&amp;", "&")
-    parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
+    parts = [p.strip() for p in val.replace("\n", "&amp;").split("&amp;") if p.strip()]
     accounts = []
     i = 0
     while i < len(parts):
@@ -68,52 +68,13 @@ def parse_accounts():
 
 def login(phone, password):
     try:
-        session = requests.Session()
-        # 先GET请求获取页面和可能的CSRF token
-        try:
-            r = session.get(LOGIN_URL, timeout=30)
-            log(f"GET登录页面状态码: {r.status_code}")
-        except:
-            pass
-        
-        # 尝试JSON登录（原有方式）
-        r = session.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
+        r = requests.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
         d = r.json()
         if d.get("status"):
             full = d.get("data", "")
             token = full.split("#")[0] if "#" in full else full
             return token
-        log(f"JSON登录失败: {d.get('message')}", "ERROR")
-        
-        # 尝试表单登录（HTML表单方式）
-        log("尝试HTML表单登录...")
-        form_data = {
-            "phone": phone,
-            "password": password,
-            "submit": "登录"
-        }
-        r = session.post(LOGIN_URL, data=form_data, timeout=30)
-        log(f"表单登录状态码: {r.status_code}")
-        
-        # 检查响应中是否包含token
-        if r.text:
-            import re
-            token_match = re.search(r'access[_]?token[\s=:"]+([a-zA-Z0-9_-]+)', r.text, re.IGNORECASE)
-            if token_match:
-                token = token_match.group(1)
-                log(f"从响应中提取到token: {token[:20]}...")
-                return token
-            
-            # 检查JSON响应
-            try:
-                d = r.json()
-                if d.get("token") or d.get("access_token"):
-                    token = d.get("token") or d.get("access_token")
-                    return token.split("#")[0] if "#" in token else token
-            except:
-                pass
-        
-        log("所有登录方式均失败", "ERROR")
+        log(f"登录失败: {d.get('message')}", "ERROR")
     except Exception as e:
         log(f"登录异常: {e}", "ERROR")
     return ""
@@ -135,8 +96,12 @@ def do_sign(token):
     try:
         url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
         body = aes_encrypt(json.dumps({"eventCode": "SJ10002"}, separators=(",", ":")))
+        log(f"签到请求URL: {url[:100]}...")
+        log(f"签到请求体长度: {len(body)}")
         r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
+        log(f"签到响应状态码: {r.status_code}")
         d = r.json()
+        log(f"签到响应数据: {json.dumps(d, ensure_ascii=False)}")
         if d.get("status") == 200:
             return True, d.get("message", "成功")
         return False, d.get("message", "失败")
@@ -146,59 +111,41 @@ def do_sign(token):
 
 def do_share(token):
     try:
-        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&pageSize=10&access_token={token}&terminal=3'), safe='')}"
+        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
+        log(f"获取文章列表URL: {list_url[:100]}...")
         r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
+        log(f"文章列表响应状态码: {r.status_code}")
         d = r.json()
+        log(f"文章列表响应数据: {json.dumps(d, ensure_ascii=False)[:500]}...")
         if d.get("status") != 200:
             return False, d.get("message", "获取文章失败")
         articles = d.get("data", {}).get("data", [])
         if not articles:
             return False, "无推荐文章"
         aid = str(articles[0]["content"]["id"])
+        log(f"选中文章ID: {aid}")
         share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParam={enc_token(token)}"
         share_body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
+        log(f"分享请求URL: {share_url}")
+        log(f"分享请求体长度: {len(share_body)}")
+        log(f"分享请求体: {share_body[:100]}...")
         sr = requests.post(share_url, headers=APP_HEADERS, data=share_body.encode("utf-8"), timeout=30)
+        log(f"分享响应状态码: {sr.status_code}")
         sd = sr.json()
+        log(f"分享响应数据: {json.dumps(sd, ensure_ascii=False)}")
         if sd.get("status") == 200:
+            log("分享成功, 尝试领取分享积分...")
             reward_url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
             reward_body = aes_encrypt(json.dumps({"eventCode": "SJ10003"}, separators=(",", ":")))
             rr = requests.post(reward_url, headers=APP_HEADERS, data=reward_body.encode("utf-8"), timeout=30)
             rd = rr.json()
+            log(f"分享积分领取响应: {json.dumps(rd, ensure_ascii=False)}")
             if rd.get("status") == 200:
                 return True, "分享成功并领取积分"
             return True, f"分享成功, 领取积分: {rd.get('message', '未知')}"
         return False, sd.get("message", "分享失败")
     except Exception as e:
         log(f"分享异常: {e}", "ERROR")
-        return False, str(e)
-
-def do_lottery(token):
-    try:
-        activities_url = f"{BASE_URL}/web/event/activity/list?encryptParam={enc_token(token)}"
-        r = requests.get(activities_url, headers=APP_HEADERS, timeout=30)
-        d = r.json()
-        if d.get("status") != 200:
-            return False, "获取活动列表失败"
-        activities = d.get("data", [])
-        if not activities:
-            return False, "暂无活动"
-        lottery_activities = [a for a in activities if a.get("activityType") == "lottery"]
-        if not lottery_activities:
-            return False, "暂无抽奖活动"
-        activity = lottery_activities[0]
-        activity_id = activity.get("id")
-        if not activity_id:
-            return False, "活动ID为空"
-        lottery_url = f"{BASE_URL}/web/event/lottery/draw?encryptParam={enc_token(token)}"
-        body = aes_encrypt(json.dumps({"activityId": activity_id}, separators=(",", ":")))
-        lr = requests.post(lottery_url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
-        ld = lr.json()
-        if ld.get("status") == 200:
-            prize = ld.get("data", {}).get("prizeName", "未知奖品")
-            return True, f"抽奖成功! 获得: {prize}"
-        return False, ld.get("message", "抽奖失败")
-    except Exception as e:
-        log(f"抽奖异常: {e}", "ERROR")
         return False, str(e)
 
 def process_account(acc, idx):
@@ -216,17 +163,10 @@ def process_account(acc, idx):
         return
     points_before = int(points_before) if points_before else 0
     log(f"昵称: {nickname}, 积分: {points_before}")
-    
     ok, msg = do_sign(token)
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
-    
     sok, smsg = do_share(token)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
-    
-    if datetime.now().weekday() == 2:
-        lok, lmsg = do_lottery(token)
-        log(f"{'🎰' if lok else '❌'} 抽奖: {lmsg}")
-    
     _, points_after = get_info(token)
     points_after = int(points_after) if points_after else 0
     if points_after is not None:
@@ -245,8 +185,6 @@ def main():
     log(f"共 {len(accounts)} 个账号")
     for i, acc in enumerate(accounts, 1):
         process_account(acc, i)
-        if i < len(accounts):
-            time.sleep(2)
     log("=" * 45)
     log("✅ 全部完成")
     log("=" * 45)
