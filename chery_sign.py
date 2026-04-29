@@ -93,12 +93,27 @@ def parse_accounts():
 def login(phone, password):
     try:
         r = requests.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
+        log(f"登录响应: {r.text}")
         d = r.json()
-        if d.get("status"):
+        # 兼容多种状态判断方式
+        status = d.get("status")
+        success = status is True or status == "success" or status == 1 or status == "true"
+        if success:
             full = d.get("data", "")
             token = full.split("#")[0] if "#" in full else full
             return token
-        log(f"登录失败: {d.get('message')}", "ERROR")
+        # 尝试直接从响应中提取token
+        if d.get("data"):
+            data = d.get("data")
+            if isinstance(data, dict):
+                token = data.get("token", data.get("access_token", ""))
+                if token:
+                    return token
+            elif isinstance(data, str):
+                token = data.split("#")[0] if "#" in data else data
+                if token:
+                    return token
+        log(f"登录失败: {d.get('message', '未知错误')}", "ERROR")
     except Exception as e:
         log(f"登录异常: {e}", "ERROR")
     return ""
