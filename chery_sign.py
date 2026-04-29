@@ -70,7 +70,8 @@ def parse_accounts():
 def login(phone, password):
     try:
         headers = {
-            "Content-Type": "application/x-www-form-urlencoded"
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json"
         }
         data = {
             "client_id": "cherygf",
@@ -79,9 +80,14 @@ def login(phone, password):
             "username": phone,
             "password": password
         }
+        log(f"登录URL: {LOGIN_URL}")
+        log(f"登录参数: {data}")
         r = requests.post(LOGIN_URL, headers=headers, data=data, timeout=30)
+        log(f"登录响应状态码: {r.status_code}")
+        log(f"登录响应内容: {r.text[:500]}")
         d = r.json()
         if d.get("access_token"):
+            log("登录成功!")
             return d.get("access_token")
         log(f"登录失败: {d.get('error_description', d.get('error', '未知错误'))}", "ERROR")
     except Exception as e:
