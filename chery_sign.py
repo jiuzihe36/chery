@@ -187,42 +187,47 @@ def do_lottery(token, max_tries=3):
         initial_points = int(initial_points) if initial_points else 0
         log(f"抽奖前积分: {initial_points}")
         
-        for try_num in range(1, max_tries + 1):
-            log(f"🎲 第{try_num}次抽奖...")
-            url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
-            body = aes_encrypt(json.dumps({"eventCode": "SJ10004"}, separators=(",", ":")))
-            log(f"抽奖请求URL: {url[:100]}...")
-            log(f"抽奖请求体长度: {len(body)}")
-            r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
-            log(f"抽奖响应状态码: {r.status_code}")
-            d = r.json()
-            log(f"抽奖响应数据: {json.dumps(d, ensure_ascii=False)}")
-            
-            if d.get("status") != 200:
-                msg = d.get("message", "抽奖失败")
-                log(f"第{try_num}次抽奖失败: {msg}")
-                return False, msg
-            
-            _, current_points = get_info(token)
-            current_points = int(current_points) if current_points else 0
-            log(f"第{try_num}次抽奖后积分: {current_points}")
-            
-            if current_points > initial_points:
-                gain = current_points - initial_points
-                log(f"🎉 第{try_num}次抽奖抽中! 获得 {gain} 积分")
-                return True, f"第{try_num}次抽奖抽中! 获得 {gain} 积分"
-            elif current_points < initial_points:
-                cost = initial_points - current_points
-                log(f"第{try_num}次抽奖未中, 消耗 {cost} 积分")
-                initial_points = current_points
-                if try_num < max_tries:
-                    log(f"继续第{try_num + 1}次抽奖...")
-            else:
-                log(f"第{try_num}次抽奖无变化")
-                if try_num < max_tries:
-                    log(f"继续第{try_num + 1}次抽奖...")
+        lottery_codes = ["SJ10004", "SJ10005", "SJ20001", "SJ30001"]
         
-        return True, f"已完成{max_tries}次抽奖"
+        for code in lottery_codes:
+            log(f"尝试抽奖事件码: {code}")
+            
+            for try_num in range(1, max_tries + 1):
+                log(f"🎲 第{try_num}次抽奖 (事件码: {code})...")
+                url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
+                body = aes_encrypt(json.dumps({"eventCode": code}, separators=(",", ":")))
+                log(f"抽奖请求URL: {url[:100]}...")
+                log(f"抽奖请求体长度: {len(body)}")
+                r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
+                log(f"抽奖响应状态码: {r.status_code}")
+                d = r.json()
+                log(f"抽奖响应数据: {json.dumps(d, ensure_ascii=False)}")
+                
+                if d.get("status") != 200:
+                    msg = d.get("message", "抽奖失败")
+                    log(f"事件码 {code} 第{try_num}次抽奖失败: {msg}")
+                    break
+                
+                _, current_points = get_info(token)
+                current_points = int(current_points) if current_points else 0
+                log(f"第{try_num}次抽奖后积分: {current_points}")
+                
+                if current_points > initial_points:
+                    gain = current_points - initial_points
+                    log(f"🎉 事件码 {code} 第{try_num}次抽奖抽中! 获得 {gain} 积分")
+                    return True, f"事件码 {code} 第{try_num}次抽奖抽中! 获得 {gain} 积分"
+                elif current_points < initial_points:
+                    cost = initial_points - current_points
+                    log(f"事件码 {code} 第{try_num}次抽奖未中, 消耗 {cost} 积分")
+                    initial_points = current_points
+                    if try_num < max_tries:
+                        log(f"继续第{try_num + 1}次抽奖...")
+                else:
+                    log(f"事件码 {code} 第{try_num}次抽奖无变化")
+                    if try_num < max_tries:
+                        log(f"继续第{try_num + 1}次抽奖...")
+        
+        return True, f"已尝试所有事件码, 完成{max_tries}次抽奖"
     except Exception as e:
         log(f"抽奖异常: {e}", "ERROR")
         return False, str(e)
