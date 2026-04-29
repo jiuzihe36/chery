@@ -187,7 +187,19 @@ def do_lottery(token, max_tries=3):
         initial_points = int(initial_points) if initial_points else 0
         log(f"抽奖前积分: {initial_points}")
         
-        lottery_codes = ["SJ10004", "SJ10005", "SJ20001", "SJ30001"]
+        lottery_codes = [
+            "SJ10004", "SJ10005", "SJ10006", "SJ10007", "SJ10008",
+            "SJ20001", "SJ20002", "SJ20003", "SJ20004", "SJ20005",
+            "SJ30001", "SJ30002", "SJ30003", "SJ30004", "SJ30005",
+            "SJ40001", "SJ40002", "SJ40003",
+            "SJ50001", "SJ50002",
+            "SJ60001", "SJ60002",
+            "SJ70001", "SJ80001",
+            "LUCKYDRAW", "LOTTERY", "DRAW", "DRAWCARD",
+            "WELFARE01", "WELFARE02", "WELFARE03",
+            "POINTS01", "POINTS02", "POINTS03",
+            "JFDRAW", "JFLOTTERY", "JF01", "JF02",
+        ]
         
         for code in lottery_codes:
             log(f"尝试抽奖事件码: {code}")
