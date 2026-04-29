@@ -139,6 +139,8 @@ def login(phone, password):
     try:
         log(f"🔐 正在登录...")
         r = requests.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
+        log(f"📝 登录接口状态码: {r.status_code}")
+        log(f"📝 登录接口响应: {r.text}")
         d = r.json()
         if d.get("status"):
             full = d.get("data", "")
