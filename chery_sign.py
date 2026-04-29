@@ -68,13 +68,52 @@ def parse_accounts():
 
 def login(phone, password):
     try:
-        r = requests.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
+        session = requests.Session()
+        # 先GET请求获取页面和可能的CSRF token
+        try:
+            r = session.get(LOGIN_URL, timeout=30)
+            log(f"GET登录页面状态码: {r.status_code}")
+        except:
+            pass
+        
+        # 尝试JSON登录（原有方式）
+        r = session.post(LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
         d = r.json()
         if d.get("status"):
             full = d.get("data", "")
             token = full.split("#")[0] if "#" in full else full
             return token
-        log(f"登录失败: {d.get('message')}", "ERROR")
+        log(f"JSON登录失败: {d.get('message')}", "ERROR")
+        
+        # 尝试表单登录（HTML表单方式）
+        log("尝试HTML表单登录...")
+        form_data = {
+            "phone": phone,
+            "password": password,
+            "submit": "登录"
+        }
+        r = session.post(LOGIN_URL, data=form_data, timeout=30)
+        log(f"表单登录状态码: {r.status_code}")
+        
+        # 检查响应中是否包含token
+        if r.text:
+            import re
+            token_match = re.search(r'access[_]?token[\s=:"]+([a-zA-Z0-9_-]+)', r.text, re.IGNORECASE)
+            if token_match:
+                token = token_match.group(1)
+                log(f"从响应中提取到token: {token[:20]}...")
+                return token
+            
+            # 检查JSON响应
+            try:
+                d = r.json()
+                if d.get("token") or d.get("access_token"):
+                    token = d.get("token") or d.get("access_token")
+                    return token.split("#")[0] if "#" in token else token
+            except:
+                pass
+        
+        log("所有登录方式均失败", "ERROR")
     except Exception as e:
         log(f"登录异常: {e}", "ERROR")
     return ""
