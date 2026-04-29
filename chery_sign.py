@@ -1,4 +1,5 @@
-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import requests
 import json
 import os
@@ -40,14 +41,13 @@ def aes_encrypt(plaintext: str) -> str:
     return b64.replace("+", "-")
 
 def enc_token(token: str) -> str:
-    return quote(aes_encrypt(f"access_token={token}&terminal=3"), safe='')
+    return quote(aes_encrypt(f"access_token={token}&amp;terminal=3"), safe='')
 
 def parse_accounts():
-    val = os.getenv("CHERY_ACCOUNT") or ""
+    val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
     if not val:
         return []
-    val = val.replace("&amp;", "&")
-    parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
+    parts = [p.strip() for p in val.replace("\n", "&amp;").split("&amp;") if p.strip()]
     accounts = []
     i = 0
     while i < len(parts):
@@ -105,7 +105,7 @@ def do_sign(token):
 
 def do_share(token):
     try:
-        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&pageSize=10&access_token={token}&terminal=3'), safe='')}"
+        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
         r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
         d = r.json()
         if d.get("status") != 200:
