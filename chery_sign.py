@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import requests
-r = requests.get("https://www.baidu.com", timeout=10)
-print(f"网络测试: {r.status_code}")
-import requests
 import json
 import os
 import base64
 import secrets
+import time
 from datetime import datetime
 from urllib.parse import quote
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
+# 配置
 LOGIN_URL = "https://logintools.smallfawn.top/chery/loginByPassword"
 BASE_URL = "https://mobile-consumer-sapp.chery.cn"
 AES_KEY = base64.b64decode("vVfnp9ozfDQyonMKuqgZUWjtdV+7PtBqtMCwJqz2HKQ=")
@@ -43,13 +42,14 @@ def aes_encrypt(plaintext: str) -> str:
     return b64.replace("+", "-")
 
 def enc_token(token: str) -> str:
-    return quote(aes_encrypt(f"access_token={token}&amp;terminal=3"), safe='')
+    return quote(aes_encrypt(f"access_token={token}&terminal=3"), safe='')
 
 def parse_accounts():
-    val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
+    val = os.getenv("CHERY_ACCOUNT") or ""
     if not val:
         return []
-    parts = [p.strip() for p in val.replace("\n", "&amp;").split("&amp;") if p.strip()]
+    val = val.replace("&amp;", "&")
+    parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
     accounts = []
     i = 0
     while i < len(parts):
@@ -96,12 +96,8 @@ def do_sign(token):
     try:
         url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
         body = aes_encrypt(json.dumps({"eventCode": "SJ10002"}, separators=(",", ":")))
-        log(f"签到请求URL: {url[:100]}...")
-        log(f"签到请求体长度: {len(body)}")
         r = requests.post(url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
-        log(f"签到响应状态码: {r.status_code}")
         d = r.json()
-        log(f"签到响应数据: {json.dumps(d, ensure_ascii=False)}")
         if d.get("status") == 200:
             return True, d.get("message", "成功")
         return False, d.get("message", "失败")
@@ -109,79 +105,62 @@ def do_sign(token):
         log(f"签到异常: {e}", "ERROR")
         return False, str(e)
 
-def get_articles(token):
+def do_share(token):
     try:
-        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
-        log(f"获取文章列表URL: {list_url[:100]}...")
+        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&pageSize=10&access_token={token}&terminal=3'), safe='')}"
         r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
-        log(f"文章列表响应状态码: {r.status_code}")
         d = r.json()
-        log(f"文章列表响应数据: {json.dumps(d, ensure_ascii=False)[:500]}...")
         if d.get("status") != 200:
-            return []
-        articles_data = d.get("data", {})
-        if not articles_data:
-            return []
-        articles = articles_data.get("data", [])
-        article_ids = []
-        for article in articles:
-            content = article.get("content")
-            if content and content.get("id"):
-                article_ids.append(str(content["id"]))
-        log(f"有效文章ID列表: {article_ids}")
-        return article_ids
-    except Exception as e:
-        log(f"获取文章列表异常: {e}", "ERROR")
-        return []
-
-def do_single_share(token, article_id, share_index=1):
-    try:
-        share_url = f"{BASE_URL}/web/community/contents/{article_id}/share?encryptParam={enc_token(token)}"
-        share_body = aes_encrypt(json.dumps({"contentId": article_id}, separators=(",", ":")))
-        log(f"第{share_index}次分享 - 文章ID: {article_id}")
-        log(f"分享请求URL: {share_url}")
-        log(f"分享请求体长度: {len(share_body)}")
+            return False, d.get("message", "获取文章失败")
+        articles = d.get("data", {}).get("data", [])
+        if not articles:
+            return False, "无推荐文章"
+        aid = str(articles[0]["content"]["id"])
+        share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParam={enc_token(token)}"
+        share_body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
         sr = requests.post(share_url, headers=APP_HEADERS, data=share_body.encode("utf-8"), timeout=30)
-        log(f"分享响应状态码: {sr.status_code}")
         sd = sr.json()
-        log(f"分享响应数据: {json.dumps(sd, ensure_ascii=False)}")
         if sd.get("status") == 200:
-            log("分享成功, 尝试领取分享积分...")
             reward_url = f"{BASE_URL}/web/event/trigger?encryptParam={enc_token(token)}"
             reward_body = aes_encrypt(json.dumps({"eventCode": "SJ10003"}, separators=(",", ":")))
             rr = requests.post(reward_url, headers=APP_HEADERS, data=reward_body.encode("utf-8"), timeout=30)
             rd = rr.json()
-            log(f"分享积分领取响应: {json.dumps(rd, ensure_ascii=False)}")
             if rd.get("status") == 200:
-                return True, f"第{share_index}次分享成功并领取积分"
-            return True, f"第{share_index}次分享成功, 领取积分: {rd.get('message', '未知')}"
-        return False, f"第{share_index}次分享失败: {sd.get('message', '未知')}"
+                return True, "分享成功并领取积分"
+            return True, f"分享成功, 领取积分: {rd.get('message', '未知')}"
+        return False, sd.get("message", "分享失败")
     except Exception as e:
-        log(f"第{share_index}次分享异常: {e}", "ERROR")
-        return False, f"第{share_index}次分享异常: {str(e)}"
+        log(f"分享异常: {e}", "ERROR")
+        return False, str(e)
 
-def do_share(token, share_count=2):
-    articles = get_articles(token)
-    if not articles:
-        return False, "获取文章列表失败"
-    
-    results = []
-    success_count = 0
-    for i in range(min(share_count, len(articles))):
-        article_id = articles[i]
-        ok, msg = do_single_share(token, article_id, i + 1)
-        results.append((ok, msg))
-        if ok:
-            success_count += 1
-    
-    if success_count == share_count:
-        return True, f"全部{share_count}次分享完成"
-    elif success_count > 0:
-        return True, f"部分分享完成 ({success_count}/{share_count})"
-    else:
-        return False, "全部分享失败"
-
-
+def do_lottery(token):
+    try:
+        activities_url = f"{BASE_URL}/web/event/activity/list?encryptParam={enc_token(token)}"
+        r = requests.get(activities_url, headers=APP_HEADERS, timeout=30)
+        d = r.json()
+        if d.get("status") != 200:
+            return False, "获取活动列表失败"
+        activities = d.get("data", [])
+        if not activities:
+            return False, "暂无活动"
+        lottery_activities = [a for a in activities if a.get("activityType") == "lottery"]
+        if not lottery_activities:
+            return False, "暂无抽奖活动"
+        activity = lottery_activities[0]
+        activity_id = activity.get("id")
+        if not activity_id:
+            return False, "活动ID为空"
+        lottery_url = f"{BASE_URL}/web/event/lottery/draw?encryptParam={enc_token(token)}"
+        body = aes_encrypt(json.dumps({"activityId": activity_id}, separators=(",", ":")))
+        lr = requests.post(lottery_url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
+        ld = lr.json()
+        if ld.get("status") == 200:
+            prize = ld.get("data", {}).get("prizeName", "未知奖品")
+            return True, f"抽奖成功! 获得: {prize}"
+        return False, ld.get("message", "抽奖失败")
+    except Exception as e:
+        log(f"抽奖异常: {e}", "ERROR")
+        return False, str(e)
 
 def process_account(acc, idx):
     name = acc.get("remark") or acc.get("phone") or "账号"
@@ -198,10 +177,17 @@ def process_account(acc, idx):
         return
     points_before = int(points_before) if points_before else 0
     log(f"昵称: {nickname}, 积分: {points_before}")
+    
     ok, msg = do_sign(token)
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
+    
     sok, smsg = do_share(token)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
+    
+    if datetime.now().weekday() == 2:
+        lok, lmsg = do_lottery(token)
+        log(f"{'🎰' if lok else '❌'} 抽奖: {lmsg}")
+    
     _, points_after = get_info(token)
     points_after = int(points_after) if points_after else 0
     if points_after is not None:
@@ -220,6 +206,8 @@ def main():
     log(f"共 {len(accounts)} 个账号")
     for i, acc in enumerate(accounts, 1):
         process_account(acc, i)
+        if i < len(accounts):
+            time.sleep(2)
     log("=" * 45)
     log("✅ 全部完成")
     log("=" * 45)
