@@ -70,10 +70,10 @@ def parse_accounts():
 def login(phone, password):
     try:
         headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json"
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        data = {
+        params = {
             "client_id": "cherygf",
             "client_secret": "WIuQftxcghmi7Oxs",
             "grant_type": "password",
@@ -81,8 +81,8 @@ def login(phone, password):
             "password": password
         }
         log(f"登录URL: {LOGIN_URL}")
-        log(f"登录参数: {data}")
-        r = requests.post(LOGIN_URL, headers=headers, data=data, timeout=30)
+        log(f"登录参数: {params}")
+        r = requests.get(LOGIN_URL, headers=headers, params=params, timeout=30)
         log(f"登录响应状态码: {r.status_code}")
         log(f"登录响应内容: {r.text[:500]}")
         d = r.json()
