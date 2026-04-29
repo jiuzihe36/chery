@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import requests
-r = requests.get("https://www.baidu.com", timeout=10)
-print(f"网络测试: {r.status_code}")
-import requests
 import json
 import os
 import base64
 import secrets
 import time
 from datetime import datetime
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
 LOGIN_URL = "https://uaa2c.chery.cn/auth/oauth/token"
+BACKUP_LOGIN_URL = "https://logintools.smallfawn.top/chery/loginByPassword"
 BASE_URL = "https://mobile-consumer-sapp.chery.cn"
 AES_KEY = base64.b64decode("vVfnp9ozfDQyonMKuqgZUWjtdV+7PtBqtMCwJqz2HKQ=")
 
@@ -50,7 +48,8 @@ def parse_accounts():
     val = os.getenv("CHERY_ACCOUNT") or os.getenv("chery", "")
     if not val:
         return []
-    parts = [p.strip() for p in val.replace("\n", "&amp;").split("&amp;") if p.strip()]
+    val = val.replace("&amp;", "&")
+    parts = [p.strip() for p in val.replace("\n", "&").split("&") if p.strip()]
     accounts = []
     i = 0
     while i < len(parts):
@@ -68,13 +67,72 @@ def parse_accounts():
     return accounts
 
 def login(phone, password):
+    log(f"登录开始: {phone}")
+    
+    token = try_login_method1(phone, password)
+    if token:
+        return token
+    
+    token = try_login_method2(phone, password)
+    if token:
+        return token
+    
+    token = try_login_method3(phone, password)
+    if token:
+        return token
+    
+    token = try_login_method4(phone, password)
+    if token:
+        return token
+    
+    log("所有登录方式均失败", "ERROR")
+    return ""
+
+def try_login_method1(phone, password):
     try:
-        from urllib.parse import urlencode
+        log("方法1: 官方接口POST (带Basic Auth)")
         headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Dart/2.19 (dart:io)",
+            "Host": "uaa2c.chery.cn"
         }
+        
+        client_id = "cherygf"
+        client_secret = "WIuQftxcghmi7Oxs"
+        auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        headers["Authorization"] = f"Basic {auth}"
+        
+        data = {
+            "grant_type": "password",
+            "username": phone,
+            "password": password
+        }
+        
+        r = requests.post(LOGIN_URL, headers=headers, data=data, timeout=30)
+        
+        if r.status_code == 200 and r.text:
+            try:
+                d = r.json()
+                if d.get("access_token"):
+                    log("方法1登录成功!")
+                    return d.get("access_token")
+            except:
+                pass
+        log(f"方法1失败: HTTP {r.status_code}")
+    except Exception as e:
+        log(f"方法1异常: {e}", "ERROR")
+    return ""
+
+def try_login_method2(phone, password):
+    try:
+        log("方法2: 官方接口GET")
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "Dart/2.19 (dart:io)",
+            "Host": "uaa2c.chery.cn"
+        }
+        
         data = {
             "client_id": "cherygf",
             "client_secret": "WIuQftxcghmi7Oxs",
@@ -82,30 +140,91 @@ def login(phone, password):
             "username": phone,
             "password": password
         }
-        encoded_data = urlencode(data)
-        log(f"登录URL: {LOGIN_URL}")
-        log(f"登录参数: {encoded_data}")
-        r = requests.post(LOGIN_URL, headers=headers, data=encoded_data, timeout=30)
-        log(f"登录响应状态码: {r.status_code}")
-        log(f"登录响应内容: {r.text[:500]}")
-        d = r.json()
-        if d.get("access_token"):
-            log("登录成功!")
-            return d.get("access_token")
-        log(f"登录失败: {d.get('error_description', d.get('error', '未知错误'))}", "ERROR")
+        
+        url = f"{LOGIN_URL}?{urlencode(data)}"
+        r = requests.get(url, headers=headers, timeout=30)
+        
+        if r.status_code == 200 and r.text:
+            try:
+                d = r.json()
+                if d.get("access_token"):
+                    log("方法2登录成功!")
+                    return d.get("access_token")
+            except:
+                pass
+        log(f"方法2失败: HTTP {r.status_code}")
     except Exception as e:
-        log(f"登录异常: {e}", "ERROR")
+        log(f"方法2异常: {e}", "ERROR")
+    return ""
+
+def try_login_method3(phone, password):
+    try:
+        log("方法3: 备用接口JSON登录")
+        r = requests.post(BACKUP_LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
+        
+        if r.status_code == 200:
+            try:
+                d = r.json()
+                if d.get("status"):
+                    full = d.get("data", "")
+                    token = full.split("#")[0] if "#" in full else full
+                    log("方法3登录成功!")
+                    return token
+            except:
+                pass
+        log(f"方法3失败: HTTP {r.status_code}")
+    except Exception as e:
+        log(f"方法3异常: {e}", "ERROR")
+    return ""
+
+def try_login_method4(phone, password):
+    try:
+        log("方法4: 备用接口表单登录")
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "Dart/2.19 (dart:io)"
+        }
+        
+        data = {
+            "phone": phone,
+            "password": password
+        }
+        
+        r = requests.post(BACKUP_LOGIN_URL, headers=headers, data=data, timeout=30)
+        
+        if r.status_code == 200:
+            try:
+                d = r.json()
+                if d.get("status"):
+                    full = d.get("data", "")
+                    token = full.split("#")[0] if "#" in full else full
+                    log("方法4登录成功!")
+                    return token
+            except:
+                pass
+        log(f"方法4失败: HTTP {r.status_code}")
+    except Exception as e:
+        log(f"方法4异常: {e}", "ERROR")
     return ""
 
 def get_info(token):
     try:
         url = f"{BASE_URL}/web/user/current/details?access_token={token}&terminal=3"
-        r = requests.get(url, headers=APP_HEADERS, timeout=30)
-        d = r.json()
-        if d.get("status") == 200:
-            data = d["data"]
-            return data.get("displayName", "?"), data.get("pointAccount", {}).get("payableBalance", 0)
-        log(f"获取信息失败: {d.get('message')}", "ERROR")
+        headers = {
+            "User-Agent": "Dart/2.19 (dart:io)",
+            "Accept": "application/json, text/plain, */*"
+        }
+        r = requests.get(url, headers=headers, timeout=30)
+        log(f"获取信息响应状态码: {r.status_code}")
+        if r.text:
+            d = r.json()
+            if d.get("status") == 200:
+                data = d["data"]
+                return data.get("displayName", "?"), data.get("pointAccount", {}).get("payableBalance", 0)
+            log(f"获取信息失败: {d.get('message')}", "ERROR")
+        else:
+            log("获取信息响应为空", "ERROR")
     except Exception as e:
         log(f"信息异常: {e}", "ERROR")
     return None, None
@@ -228,6 +347,10 @@ def main():
     log("=" * 45)
     log("🚗 奇瑞汽车签到脚本启动")
     log("=" * 45)
+    
+    r = requests.get("https://www.baidu.com", timeout=10)
+    log(f"网络测试: {r.status_code}")
+    
     accounts = parse_accounts()
     if not accounts:
         log("❌ 未配置环境变量 CHERY_ACCOUNT", "ERROR")
