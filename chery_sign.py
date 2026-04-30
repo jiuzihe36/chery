@@ -360,7 +360,7 @@ def process_account(acc, idx):
     ok, msg = do_sign(token)
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
 
-    sok, smsg = do_share(token, times=2)
+    sok, smsg = do_share(token, times=3)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
 
     if datetime.now().weekday() == 2:
