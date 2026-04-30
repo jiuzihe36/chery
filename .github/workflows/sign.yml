@@ -27,4 +27,4 @@ jobs:
       - name: 运行签到脚本
         env:
           CHERY_ACCOUNT: ${{ secrets.CHERY_ACCOUNT }}
-        run: python chery_sign_new.py
+        run: python chery_sign.py
