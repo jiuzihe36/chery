@@ -68,23 +68,23 @@ def parse_accounts():
 
 def login(phone, password):
     log(f"登录开始: {phone}")
-    
+
     token = try_login_method1(phone, password)
     if token:
         return token
-    
+
     token = try_login_method2(phone, password)
     if token:
         return token
-    
+
     token = try_login_method3(phone, password)
     if token:
         return token
-    
+
     token = try_login_method4(phone, password)
     if token:
         return token
-    
+
     log("所有登录方式均失败", "ERROR")
     return ""
 
@@ -97,20 +97,20 @@ def try_login_method1(phone, password):
             "User-Agent": "Dart/2.19 (dart:io)",
             "Host": "uaa2c.chery.cn"
         }
-        
+
         client_id = "cherygf"
         client_secret = "WIuQftxcghmi7Oxs"
         auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
         headers["Authorization"] = f"Basic {auth}"
-        
+
         data = {
             "grant_type": "password",
             "username": phone,
             "password": password
         }
-        
+
         r = requests.post(LOGIN_URL, headers=headers, data=data, timeout=30)
-        
+
         if r.status_code == 200 and r.text:
             try:
                 d = r.json()
@@ -132,7 +132,7 @@ def try_login_method2(phone, password):
             "User-Agent": "Dart/2.19 (dart:io)",
             "Host": "uaa2c.chery.cn"
         }
-        
+
         data = {
             "client_id": "cherygf",
             "client_secret": "WIuQftxcghmi7Oxs",
@@ -140,10 +140,10 @@ def try_login_method2(phone, password):
             "username": phone,
             "password": password
         }
-        
+
         url = f"{LOGIN_URL}?{urlencode(data)}"
         r = requests.get(url, headers=headers, timeout=30)
-        
+
         if r.status_code == 200 and r.text:
             try:
                 d = r.json()
@@ -161,7 +161,7 @@ def try_login_method3(phone, password):
     try:
         log("方法3: 备用接口JSON登录")
         r = requests.post(BACKUP_LOGIN_URL, json={"phone": phone, "password": password}, timeout=30)
-        
+
         if r.status_code == 200:
             try:
                 d = r.json()
@@ -185,14 +185,14 @@ def try_login_method4(phone, password):
             "Accept": "application/json",
             "User-Agent": "Dart/2.19 (dart:io)"
         }
-        
+
         data = {
             "phone": phone,
             "password": password
         }
-        
+
         r = requests.post(BACKUP_LOGIN_URL, headers=headers, data=data, timeout=30)
-        
+
         if r.status_code == 200:
             try:
                 d = r.json()
@@ -242,17 +242,8 @@ def do_sign(token):
         log(f"签到异常: {e}", "ERROR")
         return False, str(e)
 
-def do_share(token):
+def do_share_article(token, aid, index):
     try:
-        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
-        r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
-        d = r.json()
-        if d.get("status") != 200:
-            return False, d.get("message", "获取文章失败")
-        articles = d.get("data", {}).get("data", [])
-        if not articles:
-            return False, "无推荐文章"
-        aid = str(articles[0]["content"]["id"])
         share_url = f"{BASE_URL}/web/community/contents/{aid}/share?encryptParam={enc_token(token)}"
         share_body = aes_encrypt(json.dumps({"contentId": aid}, separators=(",", ":")))
         sr = requests.post(share_url, headers=APP_HEADERS, data=share_body.encode("utf-8"), timeout=30)
@@ -263,9 +254,50 @@ def do_share(token):
             rr = requests.post(reward_url, headers=APP_HEADERS, data=reward_body.encode("utf-8"), timeout=30)
             rd = rr.json()
             if rd.get("status") == 200:
-                return True, "分享成功并领取积分"
-            return True, f"分享成功, 领取积分: {rd.get('message', '未知')}"
-        return False, sd.get("message", "分享失败")
+                return True, f"第{index}次分享成功并领取积分"
+            return True, f"第{index}次分享成功, 领取积分: {rd.get('message', '未知')}"
+        return False, sd.get("message", f"第{index}次分享失败")
+    except Exception as e:
+        log(f"分享文章异常: {e}", "ERROR")
+        return False, str(e)
+
+def do_share(token, times=3):
+    try:
+        log(f"开始分享, 目标次数: {times}")
+        list_url = f"{BASE_URL}/web/community/recommend/contents?encryptParam={quote(aes_encrypt(f'pageNo=1&amp;pageSize=10&amp;access_token={token}&amp;terminal=3'), safe='')}"
+        r = requests.get(list_url, headers=APP_HEADERS, timeout=30)
+        d = r.json()
+        if d.get("status") != 200:
+            return False, d.get("message", "获取文章列表失败")
+        articles = d.get("data", {}).get("data", [])
+        if not articles:
+            return False, "无推荐文章"
+
+        shared_ids = []
+        success_count = 0
+        fail_count = 0
+
+        for i in range(min(times, len(articles))):
+            aid = str(articles[i]["content"]["id"])
+            if aid in shared_ids:
+                log(f"第{i+1}次: 文章{aid}已分享过, 跳过")
+                continue
+            log(f"第{i+1}次分享: 文章ID={aid}")
+            ok, msg = do_share_article(token, aid, i+1)
+            if ok:
+                log(f"{msg}")
+                success_count += 1
+            else:
+                log(f"❌ {msg}")
+                fail_count += 1
+            shared_ids.append(aid)
+            if i < times - 1:
+                time.sleep(2)
+
+        if success_count > 0:
+            return True, f"分享完成: 成功{success_count}次, 失败{fail_count}次"
+        else:
+            return False, f"分享失败{fail_count}次"
     except Exception as e:
         log(f"分享异常: {e}", "ERROR")
         return False, str(e)
@@ -287,7 +319,7 @@ def do_lottery(token):
         activity_id = activity.get("id")
         if not activity_id:
             return False, "活动ID为空"
-        
+
         times_url = f"{BASE_URL}/api/v1/activity/app/lottery/queryDrawTimes?encryptParam={enc_token(token)}&activityId={activity_id}"
         tr = requests.get(times_url, headers=APP_HEADERS, timeout=30)
         td = tr.json()
@@ -296,7 +328,7 @@ def do_lottery(token):
         remaining_times = td.get("data", {}).get("remainingTimes", 0)
         if remaining_times <= 0:
             return False, "今日抽奖次数已用完"
-        
+
         lottery_url = f"{BASE_URL}/api/v1/activity/app/lottery/draw?encryptParam={enc_token(token)}"
         body = aes_encrypt(json.dumps({"activityId": activity_id}, separators=(",", ":")))
         lr = requests.post(lottery_url, headers=APP_HEADERS, data=body.encode("utf-8"), timeout=30)
@@ -324,18 +356,18 @@ def process_account(acc, idx):
         return
     points_before = int(points_before) if points_before else 0
     log(f"昵称: {nickname}, 积分: {points_before}")
-    
+
     ok, msg = do_sign(token)
     log(f"{'✅' if ok else '❌'} 签到: {msg}")
-    
-    sok, smsg = do_share(token)
+
+    sok, smsg = do_share(token, times=2)
     log(f"{'✅' if sok else '⚠️'} 分享: {smsg}")
-    
+
     if datetime.now().weekday() == 2:
         log("今天是周三, 执行抽奖...")
         lok, lmsg = do_lottery(token)
         log(f"{'🎰' if lok else '❌'} 抽奖: {lmsg}")
-    
+
     _, points_after = get_info(token)
     points_after = int(points_after) if points_after else 0
     if points_after is not None:
@@ -347,10 +379,10 @@ def main():
     log("=" * 45)
     log("🚗 奇瑞汽车签到脚本启动")
     log("=" * 45)
-    
+
     r = requests.get("https://www.baidu.com", timeout=10)
     log(f"网络测试: {r.status_code}")
-    
+
     accounts = parse_accounts()
     if not accounts:
         log("❌ 未配置环境变量 CHERY_ACCOUNT", "ERROR")
