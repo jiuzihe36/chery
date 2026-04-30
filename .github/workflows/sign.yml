@@ -5,17 +5,20 @@ on:
     - cron: '0 16 * * *'  # 北京时间 00:00 执行
   workflow_dispatch:       # 手动触发
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: 设置 Python 环境
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6.5.0
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: 安装依赖
         run: |
@@ -24,4 +27,4 @@ jobs:
       - name: 运行签到脚本
         env:
           CHERY_ACCOUNT: ${{ secrets.CHERY_ACCOUNT }}
-        run: python chery_sign.py
+        run: python chery_sign_new.py
