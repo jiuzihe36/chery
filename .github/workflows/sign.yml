@@ -20,6 +20,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: 升级pip
+        run: |
+          pip install --upgrade pip
+
       - name: 安装依赖
         run: |
           pip install requests pycryptodome
